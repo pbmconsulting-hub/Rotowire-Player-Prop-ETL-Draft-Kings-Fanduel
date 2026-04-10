@@ -48,7 +48,7 @@ def _normalise_api_record(record: dict, site_override: str | None = None) -> dic
             out[canonical] = None
 
     if site_override and not out.get("sportsbook"):
-        out[canonical] = None  # will be set below
+        out["sportsbook"] = None  # will be set below
     if site_override:
         out["sportsbook"] = site_override
 

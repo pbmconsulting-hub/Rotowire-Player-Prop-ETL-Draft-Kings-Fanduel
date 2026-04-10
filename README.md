@@ -56,11 +56,11 @@ Computed summary: opening line, current line, line diff, number of changes.
 |------|-------------|
 | `v_current_props` | Latest snapshot per player/prop/book |
 | `v_dk_vs_fd` | Side-by-side DK vs FD with line_diff |
-| `v_edges` | Rows where `\|line_diff\| >= 1.0` |
+| `v_edges` | Rows where `|line_diff| >= 1.0` |
 | `v_best_over` | Best over odds per prop |
 | `v_line_history` | Full chronological history |
 | `v_steam_moves` | Lines that moved >= 1.0 |
-| `v_biggest_movers` | All movements ordered by `\|line_diff\|` |
+| `v_biggest_movers` | All movements ordered by `|line_diff|` |
 | `v_etl_health` | Last 50 scrape run audit records |
 
 ## Query Helpers
