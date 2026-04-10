@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — NBA Props{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-1">
+    <h1>Dashboard</h1>
+    <form method="post" action="/run-pipeline" style="display:inline">
+        <button type="submit" class="btn btn-primary">▶ Run Pipeline Now</button>
+    </form>
+</div>
+
+{% if message %}
+<div class="alert alert-{{ message_type }}">{{ message }}</div>
+{% endif %}
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Total Props</div>
+        <div class="value info">{{ total_props }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Today's Props</div>
+        <div class="value">{{ today_props }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Total Scrape Runs</div>
+        <div class="value">{{ total_runs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Last Run Status</div>
+        <div class="value {% if last_run_status == 'success' %}success{% elif last_run_status == 'failed' %}danger{% else %}warning{% endif %}">
+            {{ last_run_status | upper if last_run_status else 'NONE' }}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="label">DraftKings Props</div>
+        <div class="value">{{ dk_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">FanDuel Props</div>
+        <div class="value">{{ fd_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Line Movements</div>
+        <div class="value warning">{{ movement_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Unique Players</div>
+        <div class="value info">{{ unique_players }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Recent Scrape Runs</h2>
+    {% if recent_runs %}
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Method</th>
+                    <th>Extracted</th>
+                    <th>Loaded</th>
+                    <th>Rejected</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in recent_runs %}
+                <tr>
+                    <td>{{ run.id }}</td>
+                    <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '—' }}</td>
+                    <td>{{ '%.1f' | format(run.duration_seconds) if run.duration_seconds else '—' }}s</td>
+                    <td>
+                        <span class="badge {% if run.status == 'success' %}badge-success{% elif run.status == 'failed' %}badge-danger{% else %}badge-warning{% endif %}">
+                            {{ run.status or 'unknown' }}
+                        </span>
+                    </td>
+                    <td>{{ run.extraction_method or '—' }}</td>
+                    <td>{{ run.rows_extracted if run.rows_extracted is not none else '—' }}</td>
+                    <td>{{ run.rows_loaded if run.rows_loaded is not none else '—' }}</td>
+                    <td>{{ run.rows_rejected if run.rows_rejected is not none else '—' }}</td>
+                    <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ run.error_message or '' }}">
+                        {{ run.error_message[:80] if run.error_message else '—' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">📊</div>
+        <p>No scrape runs yet. Click <strong>Run Pipeline Now</strong> to get started!</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Available Game Dates</h2>
+    {% if game_dates %}
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        {% for gd in game_dates %}
+        <a href="/props?game_date={{ gd }}" class="btn btn-outline">{{ gd }}</a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">📅</div>
+        <p>No game dates found. Run the pipeline to load data.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

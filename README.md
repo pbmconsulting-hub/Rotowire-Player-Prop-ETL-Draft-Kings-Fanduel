@@ -87,9 +87,41 @@ df = get_line_movement("LeBron James", "Points", "2024-01-15")
 pytest tests/ -v
 ```
 
+## Web Dashboard
+
+A FastAPI web dashboard is included to visually inspect the pipeline and its data.
+
+### Start the Dashboard
+
+```bash
+python -m src.dashboard
+```
+
+Then open **http://localhost:8000** in your browser.
+
+### Dashboard Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard | `/` | Overview stats, recent scrape runs, run pipeline button |
+| Current Props | `/props` | Browse all props with filters (date, type, book, player) |
+| DK vs FD | `/compare` | Side-by-side DraftKings vs FanDuel comparison |
+| Edges | `/edges` | Line discrepancies between DK and FD |
+| Line Movements | `/movements` | Track how lines have moved over time |
+| Scrape Runs | `/runs` | Full audit log of all pipeline executions |
+| Health API | `/api/health` | JSON health check endpoint |
+
+### Dashboard Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DASHBOARD_PORT` | `8000` | Port to run the dashboard on |
+| `DASHBOARD_HOST` | `0.0.0.0` | Host to bind the dashboard to |
+| `DASHBOARD_RELOAD` | `false` | Enable hot-reload for development |
+
 ## Roadmap
 
 - Slack/Discord alerting on steam moves
-- FastAPI dashboard
+- ~~FastAPI dashboard~~ ✅ Shipped
 - Historical backfill support
 - Grafana dashboards

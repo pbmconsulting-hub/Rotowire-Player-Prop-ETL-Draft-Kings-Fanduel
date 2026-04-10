@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Current Props — NBA Props{% endblock %}
+
+{% block content %}
+<h1>Current Props</h1>
+
+<form method="get" class="filters">
+    <div class="filter-group">
+        <label>Game Date</label>
+        <select name="game_date">
+            <option value="">All Dates</option>
+            {% for gd in game_dates %}
+            <option value="{{ gd }}" {% if gd == selected_date %}selected{% endif %}>{{ gd }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Prop Type</label>
+        <select name="prop_type">
+            <option value="">All Types</option>
+            {% for pt in prop_types %}
+            <option value="{{ pt }}" {% if pt == selected_prop_type %}selected{% endif %}>{{ pt }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Sportsbook</label>
+        <select name="sportsbook">
+            <option value="">Both</option>
+            <option value="DraftKings" {% if selected_sportsbook == 'DraftKings' %}selected{% endif %}>DraftKings</option>
+            <option value="FanDuel" {% if selected_sportsbook == 'FanDuel' %}selected{% endif %}>FanDuel</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Player Search</label>
+        <input type="text" name="player" value="{{ selected_player or '' }}" placeholder="e.g. LeBron">
+    </div>
+    <button type="submit" class="btn btn-primary">Filter</button>
+</form>
+
+{% if props|length > 0 %}
+<div class="card">
+    <div class="flex justify-between items-center mb-1">
+        <h2>{{ props|length }} prop{{ 's' if props|length != 1 }} found</h2>
+    </div>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Opp</th>
+                    <th>Prop</th>
+                    <th>Line</th>
+                    <th>Over</th>
+                    <th>Under</th>
+                    <th>Over Prob</th>
+                    <th>Under Prob</th>
+                    <th>Book</th>
+                    <th>Date</th>
+                    <th>Scraped</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in props %}
+                <tr>
+                    <td><strong>{{ p.player_name }}</strong></td>
+                    <td>{{ p.team or '—' }}</td>
+                    <td>{{ p.opponent or '—' }}</td>
+                    <td>{{ p.prop_type }}</td>
+                    <td><strong>{{ p.line }}</strong></td>
+                    <td class="{% if p.over_odds and p.over_odds.startswith('+') %}positive{% else %}negative{% endif %}">{{ p.over_odds or '—' }}</td>
+                    <td class="{% if p.under_odds and p.under_odds.startswith('+') %}positive{% else %}negative{% endif %}">{{ p.under_odds or '—' }}</td>
+                    <td>{{ '%.1f' | format(p.over_implied_prob * 100) if p.over_implied_prob else '—' }}%</td>
+                    <td>{{ '%.1f' | format(p.under_implied_prob * 100) if p.under_implied_prob else '—' }}%</td>
+                    <td><span class="badge {% if p.sportsbook == 'DraftKings' %}badge-info{% else %}badge-success{% endif %}">{{ p.sportsbook }}</span></td>
+                    <td>{{ p.game_date }}</td>
+                    <td>{{ p.scraped_at.strftime('%H:%M:%S') if p.scraped_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <div class="icon">🔍</div>
+        <p>No props found matching your filters. Try broadening your search or run the pipeline first.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

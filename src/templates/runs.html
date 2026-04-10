@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Scrape Runs — NBA Props{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-1">
+    <h1>Scrape Runs</h1>
+    <form method="post" action="/run-pipeline" style="display:inline">
+        <button type="submit" class="btn btn-primary">▶ Run Pipeline Now</button>
+    </form>
+</div>
+
+{% if runs|length > 0 %}
+<div class="card">
+    <h2>{{ runs|length }} run{{ 's' if runs|length != 1 }} recorded</h2>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Started At</th>
+                    <th>Finished At</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Method</th>
+                    <th>Extracted</th>
+                    <th>Validated</th>
+                    <th>Rejected</th>
+                    <th>Loaded</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr>
+                    <td>{{ run.id }}</td>
+                    <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '—' }}</td>
+                    <td>{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '—' }}</td>
+                    <td>{{ '%.1f' | format(run.duration_seconds) if run.duration_seconds else '—' }}s</td>
+                    <td>
+                        <span class="badge {% if run.status == 'success' %}badge-success{% elif run.status == 'failed' %}badge-danger{% else %}badge-warning{% endif %}">
+                            {{ run.status or 'unknown' }}
+                        </span>
+                    </td>
+                    <td>{{ run.extraction_method or '—' }}</td>
+                    <td>{{ run.rows_extracted if run.rows_extracted is not none else '—' }}</td>
+                    <td>{{ run.rows_validated if run.rows_validated is not none else '—' }}</td>
+                    <td>{{ run.rows_rejected if run.rows_rejected is not none else '—' }}</td>
+                    <td>{{ run.rows_loaded if run.rows_loaded is not none else '—' }}</td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ run.error_message or '' }}">
+                        {{ run.error_message[:100] if run.error_message else '—' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if runs|length > 0 %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Success Rate</div>
+        <div class="value {% if success_rate >= 80 %}success{% elif success_rate >= 50 %}warning{% else %}danger{% endif %}">
+            {{ '%.0f' | format(success_rate) }}%
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Avg Duration</div>
+        <div class="value">{{ '%.1f' | format(avg_duration) }}s</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Total Rows Loaded</div>
+        <div class="value info">{{ total_loaded }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Total Rejected</div>
+        <div class="value danger">{{ total_rejected }}</div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <div class="icon">🚀</div>
+        <p>No scrape runs yet. Click <strong>Run Pipeline Now</strong> to trigger the first run.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

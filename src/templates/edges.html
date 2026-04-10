@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Edges — NBA Props{% endblock %}
+
+{% block content %}
+<h1>Edges (Line Discrepancies)</h1>
+
+<form method="get" class="filters">
+    <div class="filter-group">
+        <label>Game Date</label>
+        <select name="game_date">
+            {% for gd in game_dates %}
+            <option value="{{ gd }}" {% if gd == selected_date %}selected{% endif %}>{{ gd }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Min |Line Diff|</label>
+        <input type="number" name="min_diff" value="{{ min_diff }}" step="0.5" min="0" style="width: 80px">
+    </div>
+    <button type="submit" class="btn btn-primary">Find Edges</button>
+</form>
+
+{% if rows|length > 0 %}
+<div class="alert alert-info">
+    Found <strong>{{ rows|length }}</strong> edge{{ 's' if rows|length != 1 }} where |line_diff| &ge; {{ min_diff }}
+</div>
+<div class="card">
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Prop</th>
+                    <th>DK Line</th>
+                    <th>DK Over</th>
+                    <th>DK Under</th>
+                    <th>FD Line</th>
+                    <th>FD Over</th>
+                    <th>FD Under</th>
+                    <th>Line Diff</th>
+                    <th>Prob Diff</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td><strong>{{ r.player_name }}</strong></td>
+                    <td>{{ r.prop_type }}</td>
+                    <td>{{ r.dk_line }}</td>
+                    <td>{{ r.dk_over or '—' }}</td>
+                    <td>{{ r.dk_under or '—' }}</td>
+                    <td>{{ r.fd_line }}</td>
+                    <td>{{ r.fd_over or '—' }}</td>
+                    <td>{{ r.fd_under or '—' }}</td>
+                    <td class="{% if r.line_diff > 0 %}positive{% elif r.line_diff < 0 %}negative{% endif %}">
+                        <strong>{{ r.line_diff }}</strong>
+                    </td>
+                    <td>{{ r.prob_diff if r.prob_diff is not none else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <div class="icon">✅</div>
+        <p>No edges found for this date with min diff of {{ min_diff }}. Lines are aligned between DK and FD.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
