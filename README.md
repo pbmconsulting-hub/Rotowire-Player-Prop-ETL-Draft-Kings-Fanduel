@@ -116,7 +116,7 @@ Then open **http://localhost:8000** in your browser.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DASHBOARD_PORT` | `8000` | Port to run the dashboard on |
-| `DASHBOARD_HOST` | `0.0.0.0` | Host to bind the dashboard to |
+| `DASHBOARD_HOST` | `127.0.0.1` | Host to bind the dashboard to |
 | `DASHBOARD_RELOAD` | `false` | Enable hot-reload for development |
 
 ## Roadmap

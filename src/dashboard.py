@@ -440,7 +440,7 @@ def main() -> None:
     import uvicorn
 
     port = int(os.getenv("DASHBOARD_PORT", "8000"))
-    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 
     logger.info("Starting NBA Props Dashboard on http://{}:{}", host, port)
     uvicorn.run(
