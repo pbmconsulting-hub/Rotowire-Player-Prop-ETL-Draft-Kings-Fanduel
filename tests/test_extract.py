@@ -104,6 +104,14 @@ class TestParseHtmlMultiSportsbook:
         records = _parse_html(sample_html, game_date="2024-01-15")
         # 3 players × 2 sportsbooks (DK + FD) = 6 records
         assert len(records) == 6
+        # Verify a complete DraftKings record
+        lebron_dk = [r for r in records if r["player_name"] == "LeBron James" and r["sportsbook"] == "DraftKings"]
+        assert len(lebron_dk) == 1
+        assert lebron_dk[0]["line"] == "25.5"
+        assert lebron_dk[0]["over_odds"] == "-115"
+        assert lebron_dk[0]["under_odds"] == "-105"
+        assert lebron_dk[0]["team"] == "LAL"
+        assert lebron_dk[0]["opponent"] == "GSW"
 
     def test_sportsbook_names_extracted(self, sample_html):
         records = _parse_html(sample_html, game_date="2024-01-15")

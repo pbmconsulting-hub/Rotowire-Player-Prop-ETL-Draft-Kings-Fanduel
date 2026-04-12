@@ -454,16 +454,16 @@ def _parse_html(html: str, game_date: str | None = None) -> list[dict]:
         if not cols:
             continue
 
-        player_name = cols[player_idx] if player_idx is not None and player_idx < len(cols) else cols[0] if cols else None
-        team = cols[team_idx] if team_idx is not None and team_idx < len(cols) else None
-        opponent = cols[opp_idx] if opp_idx is not None and opp_idx < len(cols) else None
+        player_name = _col_value(cols, player_idx) or (cols[0] if cols else None)
+        team = _col_value(cols, team_idx)
+        opponent = _col_value(cols, opp_idx)
 
         for book_name, line_idx, over_idx, under_idx in sportsbook_groups:
             if line_idx >= len(cols):
                 continue
-            line_val = cols[line_idx] if line_idx < len(cols) else None
-            over_val = cols[over_idx] if over_idx < len(cols) else None
-            under_val = cols[under_idx] if under_idx < len(cols) else None
+            line_val = _col_value(cols, line_idx)
+            over_val = _col_value(cols, over_idx)
+            under_val = _col_value(cols, under_idx)
 
             # Skip empty sportsbook columns (player may not have odds at this book)
             if not line_val and not over_val and not under_val:
@@ -482,6 +482,13 @@ def _parse_html(html: str, game_date: str | None = None) -> list[dict]:
             })
 
     return records
+
+
+def _col_value(cols: list[str], idx: int | None) -> str | None:
+    """Safely return the column value at *idx*, or None if out of range."""
+    if idx is not None and idx < len(cols):
+        return cols[idx]
+    return None
 
 
 def _find_header_index(headers: list[str], needles: tuple[str, ...]) -> int | None:
@@ -519,23 +526,19 @@ def _parse_html_simple(
         if len(cols) < 4:
             continue
 
-        row_prop = None
-        if prop_idx is not None and prop_idx < len(cols):
-            row_prop = cols[prop_idx]
+        row_prop = _col_value(cols, prop_idx)
         effective_prop = row_prop or prop_type
 
-        row_book = None
-        if book_idx is not None and book_idx < len(cols):
-            row_book = cols[book_idx]
+        row_book = _col_value(cols, book_idx)
 
         records.append({
-            "player_name": cols[player_idx] if player_idx is not None and player_idx < len(cols) else cols[0],
-            "team": cols[team_idx] if team_idx is not None and team_idx < len(cols) else None,
-            "opponent": cols[opp_idx] if opp_idx is not None and opp_idx < len(cols) else None,
+            "player_name": _col_value(cols, player_idx) or cols[0],
+            "team": _col_value(cols, team_idx),
+            "opponent": _col_value(cols, opp_idx),
             "prop_type": effective_prop,
-            "line": cols[line_idx] if line_idx is not None and line_idx < len(cols) else None,
-            "over_odds": cols[over_idx] if over_idx is not None and over_idx < len(cols) else None,
-            "under_odds": cols[under_idx] if under_idx is not None and under_idx < len(cols) else None,
+            "line": _col_value(cols, line_idx),
+            "over_odds": _col_value(cols, over_idx),
+            "under_odds": _col_value(cols, under_idx),
             "sportsbook": row_book,
             "game_date": game_date,
         })
