@@ -34,7 +34,9 @@ class Config:
     LOG_FILE: str = os.getenv("LOG_FILE", "logs/etl.log")
     LOG_ROTATION: str = os.getenv("LOG_ROTATION", "10 MB")
 
-    ALLOWED_SPORTSBOOKS: set = {"DraftKings", "FanDuel"}
+    ALLOWED_SPORTSBOOKS: set = {
+        "DraftKings", "FanDuel", "BetMGM", "BetRivers", "Caesars", "Hard Rock",
+    }
 
     SPORTSBOOK_ALIASES: dict = {
         "dk": "DraftKings",
@@ -43,4 +45,16 @@ class Config:
         "fd": "FanDuel",
         "fanduel": "FanDuel",
         "fan duel": "FanDuel",
+        "betmgm": "BetMGM",
+        "bet mgm": "BetMGM",
+        "mgm": "BetMGM",
+        "betrivers": "BetRivers",
+        "bet rivers": "BetRivers",
+        "rivers": "BetRivers",
+        "caesars": "Caesars",
+        "czr": "Caesars",
+        "william hill": "Caesars",
+        "hard rock": "Hard Rock",
+        "hardrock": "Hard Rock",
+        "hard rock bet": "Hard Rock",
     }

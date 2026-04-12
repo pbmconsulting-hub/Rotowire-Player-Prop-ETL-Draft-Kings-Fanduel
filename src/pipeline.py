@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import traceback
-from datetime import datetime
+from datetime import datetime, UTC
 
 from loguru import logger
 from sqlalchemy import create_engine
@@ -27,7 +27,7 @@ def run_pipeline(engine=None) -> None:
 
     session = Session(engine)
     run = ScrapeRun(
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(UTC),
         status="running",
     )
     session.add(run)
@@ -35,7 +35,7 @@ def run_pipeline(engine=None) -> None:
     run_id = run.id
     session.close()
 
-    start_time = datetime.utcnow()
+    start_time = datetime.now(UTC)
     logger.info("Pipeline run #{} started", run_id)
 
     try:
@@ -59,15 +59,15 @@ def run_pipeline(engine=None) -> None:
         rows_loaded = load(clean_df, run_id, engine=engine)
 
         # --- Post-load: line movements ---
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         compute_line_movements(today, engine=engine)
 
         # --- Finalise success ---
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         _patch_run(
             engine, run_id,
             status="success",
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(UTC),
             duration_seconds=duration,
         )
         logger.info(
@@ -76,13 +76,13 @@ def run_pipeline(engine=None) -> None:
         )
 
     except Exception as exc:
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         tb = traceback.format_exc()
         logger.error("Pipeline run #{} failed: {}\n{}", run_id, exc, tb)
         _patch_run(
             engine, run_id,
             status="failed",
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(UTC),
             duration_seconds=duration,
             error_message=str(exc),
             error_traceback=tb,

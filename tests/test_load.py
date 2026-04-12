@@ -2,7 +2,7 @@
 
 import pytest
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 
 from src.models import PlayerProp, ScrapeRun
@@ -10,7 +10,7 @@ from src.load import load
 
 
 def _make_run(session) -> int:
-    run = ScrapeRun(started_at=datetime.utcnow(), status="running")
+    run = ScrapeRun(started_at=datetime.now(UTC), status="running")
     session.add(run)
     session.commit()
     return run.id

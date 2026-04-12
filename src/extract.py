@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import time
+from datetime import datetime, UTC
 from typing import Optional
 
 import requests
@@ -11,6 +13,17 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.config import Config
+
+
+# ---------------------------------------------------------------------------
+# Prop-type tabs that Selenium should iterate through
+# ---------------------------------------------------------------------------
+
+PROP_TYPE_TABS: list[str] = [
+    "Points", "Rebounds", "Assists", "Threes", "Blocks",
+    "Steals", "Turnovers", "Pts+Reb+Ast", "Pts+Reb",
+    "Pts+Ast", "Reb+Ast", "Stl+Blk",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +155,10 @@ def _extract_api(date: Optional[str] = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _extract_selenium(date: Optional[str] = None) -> list[dict]:
-    """Extract props using a headless Chrome browser as a fallback strategy."""
+    """Extract props using a headless Chrome browser as a fallback strategy.
+
+    Iterates through all prop-type tabs and scrapes each one.
+    """
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
@@ -151,7 +167,6 @@ def _extract_selenium(date: Optional[str] = None) -> list[dict]:
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
         from webdriver_manager.chrome import ChromeDriverManager
-        from bs4 import BeautifulSoup
     except ImportError as exc:
         raise RuntimeError(f"Selenium dependencies not installed: {exc}") from exc
 
@@ -168,6 +183,8 @@ def _extract_selenium(date: Optional[str] = None) -> list[dict]:
     url = Config.ROTOWIRE_PAGE_URL
     if date:
         url += f"?date={date}"
+
+    game_date = date or datetime.now(UTC).strftime("%Y-%m-%d")
 
     logger.info("Starting Selenium extraction: {}", url)
     driver = webdriver.Chrome(
@@ -188,15 +205,64 @@ def _extract_selenium(date: Optional[str] = None) -> list[dict]:
         # --- Strategy A: intercept XHR via performance logs ---
         records = _intercept_xhr(driver)
         if records:
+            # Ensure game_date is populated on XHR records
+            for rec in records:
+                if not rec.get("game_date"):
+                    rec["game_date"] = game_date
             logger.info("Selenium XHR intercept: {} records", len(records))
             return records
 
-        # --- Strategy B: BeautifulSoup HTML parsing ---
-        records = _parse_html(driver.page_source)
-        logger.info("Selenium HTML parse: {} records", len(records))
-        return records
+        # --- Strategy B: iterate prop-type tabs and parse HTML ---
+        all_records: list[dict] = []
+        for tab_name in PROP_TYPE_TABS:
+            try:
+                _click_tab(driver, tab_name)
+                time.sleep(2)  # allow table to refresh
+            except Exception:
+                logger.debug("Could not click tab '{}'; skipping", tab_name)
+                continue
+
+            page_html = driver.page_source
+            tab_records = _parse_html(page_html, game_date=game_date)
+            all_records.extend(tab_records)
+            logger.debug("Tab '{}': {} records", tab_name, len(tab_records))
+
+        # If no tabs were clickable, try parsing the default page once
+        if not all_records:
+            all_records = _parse_html(driver.page_source, game_date=game_date)
+
+        logger.info("Selenium HTML parse: {} records", len(all_records))
+        return all_records
     finally:
         driver.quit()
+
+
+def _click_tab(driver, tab_name: str) -> None:
+    """Click a prop-type tab element in the Selenium browser."""
+    from selenium.webdriver.common.by import By
+
+    # Try common selectors for tab/nav elements
+    for selector in (
+        f"a[data-prop='{tab_name}']",
+        f"button[data-prop='{tab_name}']",
+        f"li[data-prop='{tab_name}'] a",
+        f"a[data-type='{tab_name}']",
+        f"button[data-type='{tab_name}']",
+    ):
+        elements = driver.find_elements(By.CSS_SELECTOR, selector)
+        if elements:
+            elements[0].click()
+            return
+
+    # Fallback: try matching by visible text
+    for tag in ("a", "button", "li", "span"):
+        elements = driver.find_elements(By.TAG_NAME, tag)
+        for el in elements:
+            if el.text.strip() == tab_name:
+                el.click()
+                return
+
+    raise RuntimeError(f"Tab '{tab_name}' not found")
 
 
 def _intercept_xhr(driver) -> list[dict]:
@@ -226,30 +292,262 @@ def _intercept_xhr(driver) -> list[dict]:
     return []
 
 
-def _parse_html(html: str) -> list[dict]:
-    """Parse RotoWire page HTML to extract prop records."""
+# ---------------------------------------------------------------------------
+# Header-based sportsbook mapping
+# ---------------------------------------------------------------------------
+
+# Known header-text → canonical sportsbook-name mapping
+_HEADER_SPORTSBOOK_MAP: dict[str, str] = {
+    "draftkings": "DraftKings",
+    "dk": "DraftKings",
+    "fanduel": "FanDuel",
+    "fd": "FanDuel",
+    "betmgm": "BetMGM",
+    "betrivers": "BetRivers",
+    "caesars": "Caesars",
+    "hard rock": "Hard Rock",
+    "hardrock": "Hard Rock",
+}
+
+
+def _resolve_header_sportsbook(header_text: str) -> str | None:
+    """Map a column-header prefix (e.g. 'DK', 'FanDuel') to a canonical name."""
+    key = header_text.strip().lower()
+    # Strip trailing _line / _over / _under etc.
+    key = re.sub(r"[_\s]?(line|over|under|odds)$", "", key).strip()
+    return _HEADER_SPORTSBOOK_MAP.get(key)
+
+
+def _detect_sportsbook_columns(headers: list[str]) -> list[tuple[str, int, int, int]]:
+    """Detect sportsbook column groups from table headers.
+
+    Each sportsbook occupies 3 consecutive columns (Line, Over, Under).
+    Returns a list of (sportsbook_name, line_idx, over_idx, under_idx).
+    """
+    result: list[tuple[str, int, int, int]] = []
+
+    # Approach 1: look for header patterns like "DK_Line", "FD_Over"
+    sportsbook_at: dict[str, dict[str, int]] = {}
+    for idx, hdr in enumerate(headers):
+        h = hdr.strip()
+        # Try splitting on underscore or space: "DK_Line" → ("DK", "Line")
+        parts = re.split(r"[_\s]+", h, maxsplit=1)
+        if len(parts) == 2:
+            book = _resolve_header_sportsbook(parts[0])
+            col_type = parts[1].strip().lower()
+            if book and col_type in ("line", "over", "under"):
+                sportsbook_at.setdefault(book, {})[col_type] = idx
+
+    for book, cols in sportsbook_at.items():
+        if "line" in cols and "over" in cols and "under" in cols:
+            result.append((book, cols["line"], cols["over"], cols["under"]))
+
+    if result:
+        return result
+
+    # Approach 2: look for repeated triplets after the player/team/opp columns
+    # Headers: [Player, Team, Opp, Line, Over, Under, Line, Over, Under, ...]
+    # We need to figure out which sportsbook each triplet belongs to.
+    # Try to find known sportsbook names in the headers themselves.
+    book_order: list[str] = []
+    for hdr in headers:
+        book = _resolve_header_sportsbook(hdr)
+        if book and book not in book_order:
+            book_order.append(book)
+
+    # If we found sportsbook names in headers, map triplets
+    if book_order:
+        # Find where triplets start (after non-triplet columns like Player, Team, Opp)
+        triplet_start = None
+        for idx, hdr in enumerate(headers):
+            h = hdr.strip().lower()
+            if h in ("line", "over", "under"):
+                triplet_start = idx
+                break
+        if triplet_start is not None:
+            for i, book in enumerate(book_order):
+                base = triplet_start + i * 3
+                if base + 2 < len(headers):
+                    result.append((book, base, base + 1, base + 2))
+
+    return result
+
+
+def _detect_prop_type(soup) -> str | None:
+    """Detect the current prop type from the page heading or active tab."""
+    # Try active tab element
+    for selector in (
+        "a.is-active", "button.is-active",
+        "li.active a", "a.active", "button.active",
+        "[class*='tab'][class*='active']",
+        "[class*='tab'][class*='selected']",
+        "a[aria-selected='true']",
+        "button[aria-selected='true']",
+    ):
+        el = soup.select_one(selector)
+        if el:
+            text = el.get_text(strip=True)
+            if text and len(text) < 64:
+                return text
+
+    # Try h2 heading
+    h2 = soup.select_one("h2")
+    if h2:
+        text = h2.get_text(strip=True)
+        if text and len(text) < 64:
+            return text
+
+    # Try h1 heading
+    h1 = soup.select_one("h1")
+    if h1:
+        text = h1.get_text(strip=True)
+        if text and len(text) < 64:
+            return text
+
+    return None
+
+
+def _parse_html(html: str, game_date: str | None = None) -> list[dict]:
+    """Parse RotoWire page HTML to extract prop records.
+
+    Handles the real table structure where each row is:
+    [Player, Team, Opp, DK_Line, DK_Over, DK_Under, FD_Line, FD_Over, FD_Under, ...]
+
+    Each row produces one record per sportsbook.  The prop type is read from the
+    page heading / active tab, not from a table column.
+    """
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "html.parser")
     records: list[dict] = []
 
-    # Strategy 1: table rows
-    rows = soup.select("table tbody tr")
+    # --- Detect prop type from heading / active tab ---
+    prop_type = _detect_prop_type(soup)
+
+    # --- Parse table headers to find sportsbook column groups ---
+    table = soup.select_one("table")
+    if table is None:
+        return _parse_html_card_layout(soup, prop_type, game_date)
+
+    header_row = table.select_one("thead tr")
+    headers: list[str] = []
+    if header_row:
+        headers = [th.get_text(strip=True) for th in header_row.find_all("th")]
+
+    sportsbook_groups = _detect_sportsbook_columns(headers)
+
+    # --- Determine column indices for player / team / opponent ---
+    # If no sportsbook groups found, fall back to the simple legacy format
+    if not sportsbook_groups:
+        return _parse_html_simple(
+            table, headers, prop_type, game_date,
+        )
+
+    # Find player/team/opp column indices by header name
+    player_idx = _find_header_index(headers, ("player", "name"))
+    team_idx = _find_header_index(headers, ("team",))
+    opp_idx = _find_header_index(headers, ("opp", "opponent"))
+
+    rows = table.select("tbody tr")
     for row in rows:
         cols = [td.get_text(strip=True) for td in row.find_all("td")]
-        if len(cols) >= 4:
+        if not cols:
+            continue
+
+        player_name = cols[player_idx] if player_idx is not None and player_idx < len(cols) else cols[0] if cols else None
+        team = cols[team_idx] if team_idx is not None and team_idx < len(cols) else None
+        opponent = cols[opp_idx] if opp_idx is not None and opp_idx < len(cols) else None
+
+        for book_name, line_idx, over_idx, under_idx in sportsbook_groups:
+            if line_idx >= len(cols):
+                continue
+            line_val = cols[line_idx] if line_idx < len(cols) else None
+            over_val = cols[over_idx] if over_idx < len(cols) else None
+            under_val = cols[under_idx] if under_idx < len(cols) else None
+
+            # Skip empty sportsbook columns (player may not have odds at this book)
+            if not line_val and not over_val and not under_val:
+                continue
+
             records.append({
-                "player_name": cols[0],
-                "prop_type": cols[1] if len(cols) > 1 else None,
-                "line": cols[2] if len(cols) > 2 else None,
-                "over_odds": cols[3] if len(cols) > 3 else None,
-                "under_odds": cols[4] if len(cols) > 4 else None,
+                "player_name": player_name,
+                "team": team,
+                "opponent": opponent,
+                "prop_type": prop_type,
+                "line": line_val,
+                "over_odds": over_val,
+                "under_odds": under_val,
+                "sportsbook": book_name,
+                "game_date": game_date,
             })
 
-    if records:
-        return records
+    return records
 
-    # Strategy 2: div-based card layout
+
+def _find_header_index(headers: list[str], needles: tuple[str, ...]) -> int | None:
+    """Return the index of the first header whose lower-cased text matches a needle."""
+    for idx, h in enumerate(headers):
+        if h.strip().lower() in needles:
+            return idx
+    return None
+
+
+def _parse_html_simple(
+    table, headers: list[str], prop_type: str | None, game_date: str | None,
+) -> list[dict]:
+    """Legacy parser for simple table layouts.
+
+    Handles the format: [Player, Prop, Line, Over, Under, Book] or
+    [Player, Team, Opp, Line, Over, Under].
+    """
+    records: list[dict] = []
+    # Detect column roles by header names
+    h_lower = [h.strip().lower() for h in headers]
+
+    player_idx = _find_header_index(headers, ("player", "name"))
+    team_idx = _find_header_index(headers, ("team",))
+    opp_idx = _find_header_index(headers, ("opp", "opponent"))
+    prop_idx = _find_header_index(headers, ("prop", "prop_type", "prop type", "market"))
+    line_idx = _find_header_index(headers, ("line", "value", "total"))
+    over_idx = _find_header_index(headers, ("over",))
+    under_idx = _find_header_index(headers, ("under",))
+    book_idx = _find_header_index(headers, ("book", "sportsbook", "source", "site"))
+
+    rows = table.select("tbody tr")
+    for row in rows:
+        cols = [td.get_text(strip=True) for td in row.find_all("td")]
+        if len(cols) < 4:
+            continue
+
+        row_prop = None
+        if prop_idx is not None and prop_idx < len(cols):
+            row_prop = cols[prop_idx]
+        effective_prop = row_prop or prop_type
+
+        row_book = None
+        if book_idx is not None and book_idx < len(cols):
+            row_book = cols[book_idx]
+
+        records.append({
+            "player_name": cols[player_idx] if player_idx is not None and player_idx < len(cols) else cols[0],
+            "team": cols[team_idx] if team_idx is not None and team_idx < len(cols) else None,
+            "opponent": cols[opp_idx] if opp_idx is not None and opp_idx < len(cols) else None,
+            "prop_type": effective_prop,
+            "line": cols[line_idx] if line_idx is not None and line_idx < len(cols) else None,
+            "over_odds": cols[over_idx] if over_idx is not None and over_idx < len(cols) else None,
+            "under_odds": cols[under_idx] if under_idx is not None and under_idx < len(cols) else None,
+            "sportsbook": row_book,
+            "game_date": game_date,
+        })
+
+    return records
+
+
+def _parse_html_card_layout(
+    soup, prop_type: str | None, game_date: str | None,
+) -> list[dict]:
+    """Parse div/card-based layouts as a last resort."""
+    records: list[dict] = []
     for selector in (
         "div[class*='prop'] div[class*='row']",
         "div[class*='player-prop']",
@@ -265,10 +563,11 @@ def _parse_html(html: str) -> list[dict]:
             if name_el:
                 records.append({
                     "player_name": name_el.get_text(strip=True),
-                    "prop_type": prop_el.get_text(strip=True) if prop_el else None,
+                    "prop_type": prop_el.get_text(strip=True) if prop_el else prop_type,
                     "line": line_el.get_text(strip=True) if line_el else None,
                     "over_odds": over_el.get_text(strip=True) if over_el else None,
                     "under_odds": under_el.get_text(strip=True) if under_el else None,
+                    "game_date": game_date,
                 })
         if records:
             return records

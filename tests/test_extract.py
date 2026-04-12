@@ -1,7 +1,14 @@
 """Tests for src/extract.py."""
 
 import pytest
-from src.extract import _normalise_api_record, _extract_records_from_response
+from src.extract import (
+    _normalise_api_record,
+    _extract_records_from_response,
+    _parse_html,
+    _detect_sportsbook_columns,
+    _detect_prop_type,
+    _find_header_index,
+)
 
 
 class TestNormaliseApiRecord:
@@ -88,3 +95,90 @@ class TestExtractRecordsFromResponse:
     def test_empty_list(self):
         records = _extract_records_from_response([], "dk")
         assert records == []
+
+
+class TestParseHtmlMultiSportsbook:
+    """Tests for the rewritten _parse_html with multi-sportsbook table format."""
+
+    def test_multi_sportsbook_table(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        # 3 players × 2 sportsbooks (DK + FD) = 6 records
+        assert len(records) == 6
+
+    def test_sportsbook_names_extracted(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        sportsbooks = {r["sportsbook"] for r in records}
+        assert "DraftKings" in sportsbooks
+        assert "FanDuel" in sportsbooks
+
+    def test_prop_type_from_heading(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        for r in records:
+            assert r["prop_type"] == "Points"
+
+    def test_team_and_opponent_populated(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        lebron_records = [r for r in records if r["player_name"] == "LeBron James"]
+        assert len(lebron_records) == 2
+        for r in lebron_records:
+            assert r["team"] == "LAL"
+            assert r["opponent"] == "GSW"
+
+    def test_game_date_populated(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        for r in records:
+            assert r["game_date"] == "2024-01-15"
+
+    def test_dk_and_fd_lines_differ(self, sample_html):
+        records = _parse_html(sample_html, game_date="2024-01-15")
+        lebron_dk = [r for r in records if r["player_name"] == "LeBron James" and r["sportsbook"] == "DraftKings"]
+        lebron_fd = [r for r in records if r["player_name"] == "LeBron James" and r["sportsbook"] == "FanDuel"]
+        assert len(lebron_dk) == 1
+        assert len(lebron_fd) == 1
+        assert lebron_dk[0]["line"] == "25.5"
+        assert lebron_fd[0]["line"] == "26.5"
+
+
+class TestDetectSportsbookColumns:
+    def test_underscore_format(self):
+        headers = ["Player", "Team", "Opp", "DK_Line", "DK_Over", "DK_Under", "FD_Line", "FD_Over", "FD_Under"]
+        groups = _detect_sportsbook_columns(headers)
+        assert len(groups) == 2
+        books = {g[0] for g in groups}
+        assert "DraftKings" in books
+        assert "FanDuel" in books
+
+    def test_empty_headers(self):
+        groups = _detect_sportsbook_columns([])
+        assert groups == []
+
+
+class TestDetectPropType:
+    def test_h2_heading(self):
+        from bs4 import BeautifulSoup
+        html = "<html><body><h2>Rebounds</h2><table></table></body></html>"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _detect_prop_type(soup) == "Rebounds"
+
+    def test_active_tab(self):
+        from bs4 import BeautifulSoup
+        html = '<html><body><a class="is-active">Assists</a><table></table></body></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        assert _detect_prop_type(soup) == "Assists"
+
+    def test_no_heading_returns_none(self):
+        from bs4 import BeautifulSoup
+        html = "<html><body><table></table></body></html>"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _detect_prop_type(soup) is None
+
+
+class TestFindHeaderIndex:
+    def test_finds_player(self):
+        assert _find_header_index(["Player", "Team", "Line"], ("player",)) == 0
+
+    def test_finds_team(self):
+        assert _find_header_index(["Player", "Team", "Line"], ("team",)) == 1
+
+    def test_not_found(self):
+        assert _find_header_index(["Player", "Team"], ("missing",)) is None

@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for the NBA Props ETL pipeline."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text,
     UniqueConstraint, Index, create_engine,
@@ -30,7 +30,7 @@ class PlayerProp(Base):
     sportsbook = Column(String(64), nullable=True)
     game_date = Column(String(16), nullable=False)
     game_time = Column(String(16), nullable=True)
-    scraped_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    scraped_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
 
     __table_args__ = (
         UniqueConstraint(

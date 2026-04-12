@@ -58,17 +58,37 @@ class TestTransformRejections:
         assert validated == 0
         assert rejected >= 1
 
-    def test_caesars_rejected(self):
-        record = {**VALID_RECORD, "sportsbook": "Caesars"}
+    def test_unknown_sportsbook_rejected(self):
+        record = {**VALID_RECORD, "sportsbook": "UnknownBook123"}
         df, validated, rejected = transform([record])
         assert validated == 0
         assert rejected >= 1
 
-    def test_betmgm_rejected(self):
+
+class TestNewSportsbooks:
+    def test_caesars_accepted(self):
+        record = {**VALID_RECORD, "sportsbook": "Caesars"}
+        df, validated, rejected = transform([record])
+        assert validated == 1
+        assert df.iloc[0]["sportsbook"] == "Caesars"
+
+    def test_betmgm_accepted(self):
         record = {**VALID_RECORD, "sportsbook": "BetMGM"}
         df, validated, rejected = transform([record])
-        assert validated == 0
-        assert rejected >= 1
+        assert validated == 1
+        assert df.iloc[0]["sportsbook"] == "BetMGM"
+
+    def test_betrivers_accepted(self):
+        record = {**VALID_RECORD, "sportsbook": "BetRivers"}
+        df, validated, rejected = transform([record])
+        assert validated == 1
+        assert df.iloc[0]["sportsbook"] == "BetRivers"
+
+    def test_hard_rock_accepted(self):
+        record = {**VALID_RECORD, "sportsbook": "Hard Rock"}
+        df, validated, rejected = transform([record])
+        assert validated == 1
+        assert df.iloc[0]["sportsbook"] == "Hard Rock"
 
 
 class TestSportsbookAliases:
@@ -83,6 +103,24 @@ class TestSportsbookAliases:
 
     def test_fanduel_passthrough(self):
         assert _resolve_sportsbook("fanduel") == "FanDuel"
+
+    def test_betmgm_alias(self):
+        assert _resolve_sportsbook("betmgm") == "BetMGM"
+
+    def test_betrivers_alias(self):
+        assert _resolve_sportsbook("betrivers") == "BetRivers"
+
+    def test_caesars_alias(self):
+        assert _resolve_sportsbook("caesars") == "Caesars"
+
+    def test_czr_alias(self):
+        assert _resolve_sportsbook("czr") == "Caesars"
+
+    def test_hard_rock_alias(self):
+        assert _resolve_sportsbook("hard rock") == "Hard Rock"
+
+    def test_hardrock_alias(self):
+        assert _resolve_sportsbook("hardrock") == "Hard Rock"
 
 
 class TestPropTypeNormalisation:

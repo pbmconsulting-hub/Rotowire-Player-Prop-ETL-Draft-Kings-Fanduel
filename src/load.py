@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 
 import pandas as pd
@@ -37,7 +37,7 @@ def load(df: pd.DataFrame, scrape_run_id: int, engine=None) -> int:
         _update_scrape_run(scrape_run_id, rows_loaded=0, engine=engine)
         return 0
 
-    scraped_at = datetime.utcnow()
+    scraped_at = datetime.now(UTC)
     objects = []
     for _, row in df.iterrows():
         obj = PlayerProp(
